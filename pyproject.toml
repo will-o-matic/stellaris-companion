@@ -32,6 +32,7 @@ dependencies = [
 [project.scripts]
 stellaris-companion-mcp = "backend.mcp.server:main"
 stellaris-qa-export = "stellaris_save_extractor.qa_export:main"
+stellaris-qa-check = "stellaris_save_extractor.qa_check:main"
 
 [project.optional-dependencies]
 dev = [
