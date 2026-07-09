@@ -32,12 +32,17 @@ except ImportError:
 
 # --- Save Corpus Configuration ---
 
+# Multi-version corpus manifest. Register additional saves here as they become
+# available; drop the .sav in tests/saves/ (gitignored) and commit QA export
+# baselines under tests/qa_baselines/<stem>/ (see tests/test_qa_regression.py).
 SAVE_CORPUS = {
     "test_save.sav": {
         "description": "Base test save - mid-to-late game organic empire",
         "type": "base_game",
         "stage": "late",
         "empire_type": "organic",
+        "version": "Corvus v4.2.4",
+        "dlc": None,
         "required": True,
     },
 }

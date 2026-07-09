@@ -18,9 +18,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from stellaris_save_extractor.qa_export import (
     EXPORT_METHODS,
     RAW_SECTIONS,
+    _canonical,
+    _json_safe,
+    baseline_payload,
     collect_extraction,
+    compare_baselines,
     evaluate_smell,
     run_full_export,
+    write_baselines,
 )
 
 TEST_SAVE = Path(__file__).parent.parent / "test_save.sav"
@@ -55,6 +60,13 @@ def test_collect_extraction_captures_results_and_errors():
     # A crashing extractor method is a finding, not a crash of the whole export.
     assert "__error__" in result["get_boom"]
     assert "kaboom" in result["get_boom"]["__error__"]
+
+
+def test_json_safe_sorts_sets_for_determinism():
+    # Sets have no stable iteration order; the export must serialise them
+    # deterministically or regression baselines drift run-to-run.
+    assert _json_safe({"x": {"b", "a", "c"}}) == {"x": ["a", "b", "c"]}
+    assert _json_safe({"x": {3, 1, 2}}) == {"x": [1, 2, 3]}
 
 
 # --- silent-failure smell check ---
@@ -172,3 +184,86 @@ def test_main_defaults_to_most_recent_save(tmp_path, monkeypatch):
 
     assert rc == 0
     assert captured["save_path"] == "auto_found.sav"
+
+
+# --- regression baselines (tier 3) ---
+
+
+def _fake_export():
+    return {
+        "metadata": {
+            "save_path": "x.sav",
+            "exported_at": "2026-01-01T00:00:00",
+            "tool_version": "1",
+        },
+        "extraction": {"get_fleets": {"fleets": [1, 2]}, "get_wars": {"wars": []}},
+        "raw_counts": {"fleet": 2, "war": 0},
+        "audit": {"smell": [], "validation": {"pass_rate": 90}},
+    }
+
+
+def test_baseline_payload_has_per_method_files_and_excludes_volatile_metadata():
+    payload = baseline_payload(_fake_export())
+
+    assert "get_fleets.json" in payload
+    assert "get_wars.json" in payload
+    assert "_raw_counts.json" in payload
+    assert "_smell.json" in payload
+    # Volatile metadata (exported_at, tool_version, save_path) must not be baselined.
+    assert not any("metadata" in name for name in payload)
+
+
+def test_write_and_compare_baselines_roundtrip(tmp_path):
+    export = _fake_export()
+    write_baselines(export, str(tmp_path))
+
+    assert compare_baselines(export, str(tmp_path)) == []
+
+
+def test_compare_baselines_detects_drift(tmp_path):
+    export = _fake_export()
+    write_baselines(export, str(tmp_path))
+
+    drifted = _fake_export()
+    drifted["extraction"]["get_fleets"]["fleets"] = [1, 2, 3]
+
+    assert "get_fleets.json" in compare_baselines(drifted, str(tmp_path))
+
+
+def test_canonical_strips_volatile_fields():
+    # get_metadata embeds file_path (relative vs absolute) and modified (mtime);
+    # these must not cause baseline drift across machines/paths.
+    a = {"file_path": "/abs/path/test_save.sav", "modified": "2026-01-01T00:00:00", "date": "2242"}
+    b = {"file_path": "test_save.sav", "modified": "2026-07-09T10:42:15", "date": "2242"}
+
+    assert _canonical(a) == _canonical(b)
+
+
+def test_compare_baselines_is_order_insensitive(tmp_path):
+    # The extractor builds some lists by iterating sets, so element order can vary
+    # across processes (hash seed). Regression comparison must ignore list order.
+    export = _fake_export()
+    write_baselines(export, str(tmp_path))
+
+    reordered = _fake_export()
+    reordered["extraction"]["get_fleets"]["fleets"] = [2, 1]  # same items, swapped
+
+    assert compare_baselines(reordered, str(tmp_path)) == []
+
+
+def test_compare_baselines_reports_missing_baseline(tmp_path):
+    # Empty baseline dir -> every payload file is "missing".
+    mismatches = compare_baselines(_fake_export(), str(tmp_path))
+    assert "get_fleets.json" in mismatches
+
+
+def test_main_update_baselines_writes_files(tmp_path, monkeypatch):
+    import stellaris_save_extractor.qa_export as qa
+
+    monkeypatch.setattr(qa, "run_full_export", lambda save_path, **kw: _fake_export())
+
+    rc = qa.main(["some.sav", "--update-baselines", str(tmp_path)])
+
+    assert rc == 0
+    assert (tmp_path / "get_fleets.json").exists()
+    assert (tmp_path / "_raw_counts.json").exists()

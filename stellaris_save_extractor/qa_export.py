@@ -180,7 +180,10 @@ def _json_safe(obj):
         return obj
     if isinstance(obj, dict):
         return {str(k): _json_safe(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple, set, frozenset)):
+    if isinstance(obj, (set, frozenset)):
+        # Sets have no stable order — sort so exports are deterministic (baselines).
+        return [_json_safe(v) for v in sorted(obj, key=lambda x: (str(type(x)), str(x)))]
+    if isinstance(obj, (list, tuple)):
         return [_json_safe(v) for v in obj]
     if isinstance(obj, bytes):
         return obj.decode("utf-8", "replace")
@@ -334,6 +337,83 @@ def run_full_export(
     return _json_safe(export)
 
 
+def baseline_payload(export: dict) -> dict:
+    """Map baseline filename -> content for regression snapshotting.
+
+    One ``<method>.json`` per extracted section, plus ``_raw_counts.json`` and
+    ``_smell.json``. Volatile metadata (exported_at, tool_version, save_path) and
+    the validation report are deliberately excluded so baselines stay stable across
+    machines and runs.
+    """
+    payload: dict = {}
+    for method, result in export.get("extraction", {}).items():
+        payload[f"{method}.json"] = result
+    payload["_raw_counts.json"] = export.get("raw_counts", {})
+    if "audit" in export:
+        payload["_smell.json"] = export["audit"].get("smell", [])
+    return payload
+
+
+# Fields that vary by machine/path/run and must not cause baseline drift.
+_VOLATILE_KEYS = frozenset(
+    {"file_path", "modified", "save_path", "exported_at", "tool_version", "gamestate_loaded"}
+)
+
+
+def _canonical(value):
+    """Normalise for order-insensitive, machine-independent comparison.
+
+    Recursively sorts dict keys and list elements (some extractor sections build
+    lists by iterating sets, so element order varies across processes) and drops
+    volatile fields (file_path, modified, timestamps) that would otherwise cause
+    spurious drift.
+    """
+    import json
+
+    if isinstance(value, dict):
+        return {k: _canonical(value[k]) for k in sorted(value) if k not in _VOLATILE_KEYS}
+    if isinstance(value, list):
+        return sorted(
+            (_canonical(v) for v in value),
+            key=lambda x: json.dumps(x, sort_keys=True),
+        )
+    return value
+
+
+def write_baselines(export: dict, baseline_dir: str) -> list[str]:
+    """Write the baseline payload for ``export`` into ``baseline_dir``."""
+    import json
+    import os
+
+    os.makedirs(baseline_dir, exist_ok=True)
+    payload = baseline_payload(export)
+    for name, content in payload.items():
+        # Store the canonical form (sorted, volatile fields stripped) so committed
+        # baselines are stable and path-independent.
+        with open(os.path.join(baseline_dir, name), "w", encoding="utf-8") as fh:
+            json.dump(_canonical(content), fh, indent=2, sort_keys=True)
+    return sorted(payload)
+
+
+def compare_baselines(export: dict, baseline_dir: str) -> list[str]:
+    """Return baseline filenames that are missing or differ from ``export``."""
+    import json
+    import os
+
+    payload = baseline_payload(export)
+    mismatches: list[str] = []
+    for name, content in payload.items():
+        path = os.path.join(baseline_dir, name)
+        if not os.path.exists(path):
+            mismatches.append(name)
+            continue
+        with open(path, encoding="utf-8") as fh:
+            baseline = json.load(fh)
+        if _canonical(baseline) != _canonical(content):
+            mismatches.append(name)
+    return mismatches
+
+
 def _now_iso() -> str:
     """Wall-clock timestamp for the export header (CLI-only; kept out of
     run_full_export so exports stay deterministic for baselines)."""
@@ -361,6 +441,11 @@ def main(argv=None) -> int:
     parser.add_argument("--player-name", help="MP empire override: match by player name.")
     parser.add_argument("--player-country-id", help="MP empire override: explicit country id.")
     parser.add_argument("--indent", type=int, default=2, help="JSON indent (default: 2).")
+    parser.add_argument(
+        "--update-baselines",
+        metavar="DIR",
+        help="Write per-section regression baselines into DIR instead of dumping JSON.",
+    )
     args = parser.parse_args(argv)
 
     save_path = args.save_path
@@ -380,6 +465,14 @@ def main(argv=None) -> int:
         player_country_id=args.player_country_id,
         exported_at=_now_iso(),
     )
+
+    if args.update_baselines:
+        written = write_baselines(export, args.update_baselines)
+        print(
+            f"[qa-export] wrote {len(written)} baseline files to {args.update_baselines}",
+            file=sys.stderr,
+        )
+        return 0
 
     text = json.dumps(export, indent=args.indent, sort_keys=True)
     if args.output:
