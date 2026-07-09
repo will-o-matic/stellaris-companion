@@ -164,7 +164,15 @@ def _checks_resources(e):
 
 
 def _checks_technology(e):
-    in_progress = _g(e, "extraction", "get_technology", "in_progress", default=[])
+    # in_progress is {area: {tech, progress, ...}} in 4.x. Show just the active tech
+    # names — the extractor can't compute percent-complete from the save (cost lives
+    # in game definition files), so don't surface null-percent noise as a "mismatch".
+    in_progress = _g(e, "extraction", "get_technology", "in_progress", default={})
+    active = []
+    if isinstance(in_progress, dict):
+        for area, cur in in_progress.items():
+            if isinstance(cur, dict) and cur.get("tech"):
+                active.append(f"{area}: {cur['tech']}")
     return [
         _check(
             "completed_count",
@@ -176,9 +184,9 @@ def _checks_technology(e):
         _check(
             "in_progress",
             "technology",
-            "Research in progress",
-            len(in_progress) if isinstance(in_progress, list) else in_progress,
-            "Research queue",
+            "Research in progress (techs)",
+            active,
+            "Research queue (tech names)",
         ),
     ]
 
@@ -208,13 +216,18 @@ def _checks_wars(e):
 
 
 def _checks_diplomacy(e):
+    # Prefer empire_count (real empires only) over relation_count, which includes
+    # enclaves/marauders/space-fauna/factions. Fall back for older extractors.
+    empire_count = _g(e, "extraction", "get_diplomacy", "empire_count")
+    if empire_count is None:
+        empire_count = _g(e, "extraction", "get_diplomacy", "relation_count")
     return [
         _check(
-            "relation_count",
+            "known_empires",
             "diplomacy",
-            "Known empires (relations)",
-            _g(e, "extraction", "get_diplomacy", "relation_count"),
-            "Contacts / Diplomacy",
+            "Known empires",
+            empire_count,
+            "Contacts / Diplomacy (empires only)",
         )
     ]
 

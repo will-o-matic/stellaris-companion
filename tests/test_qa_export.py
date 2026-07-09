@@ -74,6 +74,15 @@ def test_json_safe_sorts_sets_for_determinism():
 _FLEET_RULE = [{"name": "fleets", "extracted": ("get_fleets", "fleets"), "raw_section": "fleet"}]
 
 
+def test_smell_rules_exclude_galaxy_wide_war_section():
+    # get_wars is player-scoped (only the player's wars), but the raw 'war' section
+    # is galaxy-wide (every empire's wars). Comparing them yields false positives, so
+    # no smell rule may key off the 'war' section.
+    from stellaris_save_extractor.qa_export import SMELL_RULES
+
+    assert all(rule["raw_section"] != "war" for rule in SMELL_RULES)
+
+
 def test_smell_flags_empty_extraction_when_raw_has_data():
     extraction = {"get_fleets": {"fleets": []}}
     raw = {"fleet": {"1": {}, "2": {}}}

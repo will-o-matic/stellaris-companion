@@ -87,10 +87,11 @@ RAW_SECTIONS: list[str] = [
 
 # Silent-failure smell rules: if the extracted collection is empty while the raw
 # section has entries, flag it. Each rule maps (method_name, key) -> raw section.
+# NB: no rule for wars — get_wars is player-scoped while the raw 'war' section is
+# galaxy-wide (every empire's wars), so comparing counts produces false positives.
 SMELL_RULES: list[dict] = [
     {"name": "fleets", "extracted": ("get_fleets", "fleets"), "raw_section": "fleet"},
     {"name": "leaders", "extracted": ("get_leaders", "leaders"), "raw_section": "leaders"},
-    {"name": "wars", "extracted": ("get_wars", "wars"), "raw_section": "war"},
     {
         "name": "pops",
         "extracted": ("get_pop_statistics", "total_pops"),

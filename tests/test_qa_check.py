@@ -74,6 +74,46 @@ def test_build_checks_military_yields_multiple_checks():
     assert values["military_fleet_count"] == 2
 
 
+def test_diplomacy_check_prefers_empire_count_over_relation_count():
+    export = _export()
+    export["extraction"]["get_diplomacy"] = {"empire_count": 8, "relation_count": 13}
+
+    checks = build_checks(export, ["diplomacy"])
+    value = next(c for c in checks if c["category"] == "diplomacy")["value"]
+
+    assert value == 8
+
+
+def test_diplomacy_check_falls_back_to_relation_count():
+    export = _export()
+    export["extraction"]["get_diplomacy"] = {"relation_count": 13}  # older extractor
+
+    checks = build_checks(export, ["diplomacy"])
+    value = next(c for c in checks if c["category"] == "diplomacy")["value"]
+
+    assert value == 13
+
+
+def test_technology_in_progress_check_lists_tech_names_not_raw_dict():
+    export = _export()
+    export["extraction"]["get_technology"] = {
+        "completed_count": 54,
+        "in_progress": {
+            "physics": {"tech": "tech_alpha", "progress": 10, "percent_complete": None},
+            "society": {"tech": "tech_beta"},
+            "engineering": None,
+        },
+    }
+
+    checks = build_checks(export, ["technology"])
+    value = next(c for c in checks if c["key"] == "in_progress")["value"]
+
+    # Compact list of active techs — not the raw dict with null percent noise.
+    assert "tech_alpha" in " ".join(value)
+    assert "tech_beta" in " ".join(value)
+    assert "percent_complete" not in " ".join(value)
+
+
 def test_build_checks_all_categories_no_crash_on_sparse_export():
     sparse = {"metadata": {}, "extraction": {}, "audit": {}}
     checks = build_checks(sparse)  # all categories, mostly missing data
