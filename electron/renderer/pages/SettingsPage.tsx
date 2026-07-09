@@ -122,7 +122,41 @@ function SettingsPage({
   const [mcpRelayLoading, setMcpRelayLoading] = useState(false)
   const [mcpRelayChecking, setMcpRelayChecking] = useState(false)
   const [mcpRelayInstalling, setMcpRelayInstalling] = useState(false)
+  const [qaToolsEnabled, setQaToolsEnabled] = useState(false)
+  const [qaExporting, setQaExporting] = useState(false)
   const successTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    window.electronAPI?.qa
+      ?.enabled?.()
+      .then((v) => setQaToolsEnabled(Boolean(v)))
+      .catch(() => setQaToolsEnabled(false))
+  }, [])
+
+  const handleQaExport = async () => {
+    setQaExporting(true)
+    try {
+      const res = await window.electronAPI?.qa?.export?.()
+      if (res?.ok) {
+        showToast({
+          type: 'success',
+          message: t('settings.saveData.qaExportSuccess', {
+            sections: res.data.sections,
+            flags: res.data.smell_flags,
+          }),
+          duration: 5000,
+        })
+      } else if (res && !res.canceled) {
+        showToast({
+          type: 'error',
+          message: res.error || t('settings.saveData.qaExportError'),
+          duration: 5000,
+        })
+      }
+    } finally {
+      setQaExporting(false)
+    }
+  }
 
   useEffect(() => {
     return () => {
@@ -782,6 +816,22 @@ function SettingsPage({
                              <HUDMicro className="block mt-2">
                                  {t('settings.saveData.target')}
                              </HUDMicro>
+                             {qaToolsEnabled && (
+                                 <div className="pt-3 mt-3 border-t border-white/10">
+                                     <HUDButton
+                                        variant="secondary"
+                                        onClick={handleQaExport}
+                                        disabled={qaExporting}
+                                     >
+                                         {qaExporting
+                                            ? t('settings.saveData.qaExportBusy')
+                                            : t('settings.saveData.qaExportButton')}
+                                     </HUDButton>
+                                     <HUDMicro className="block mt-2">
+                                         {t('settings.saveData.qaExportHelp')}
+                                     </HUDMicro>
+                                 </div>
+                             )}
                          </div>
                     </HUDPanel>
                 </section>

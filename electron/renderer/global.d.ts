@@ -125,6 +125,13 @@ declare global {
       openExternal: (url: string) => Promise<{ success: boolean }>
       exportChronicle: (html: string, defaultFilename: string) => Promise<{ success: boolean; filePath?: string; error?: string } | null>
       getBackendLogTail: (opts?: { maxBytes?: number }) => Promise<{ ok: true; data: string } | { ok: false; error: string }>
+      qa?: {
+        enabled: () => Promise<boolean>
+        export: (opts?: { includeRaw?: boolean }) => Promise<
+          | { ok: true; data: { path: string; sections: number; smell_flags: number } }
+          | { ok: false; error?: string; canceled?: boolean }
+        >
+      }
       mcpRelay: {
         status: () => Promise<McpRelayStatus>
         healthCheck: () => Promise<McpRelayHealthResult>

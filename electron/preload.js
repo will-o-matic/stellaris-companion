@@ -56,6 +56,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openExternal: (url) => ipcRenderer.invoke('open-external', { url }),
   exportChronicle: (html, defaultFilename) => ipcRenderer.invoke('export-chronicle', { html, defaultFilename }),
   getBackendLogTail: (opts) => ipcRenderer.invoke('get-backend-log-tail', opts || {}),
+
+  // Dev/QA tooling (gated behind dev mode / STELLARIS_QA_TOOLS)
+  qa: {
+    enabled: () => ipcRenderer.invoke('qa:enabled'),
+    export: (opts) => ipcRenderer.invoke('qa:export', opts || {}),
+  },
   mcpRelay: {
     status: () => ipcRenderer.invoke('mcp-relay:status'),
     healthCheck: () => ipcRenderer.invoke('mcp-relay:health-check'),

@@ -25,6 +25,7 @@ const { setupAutoUpdater, registerUpdateIpcHandlers, wireAutoUpdaterEvents } = r
 const { registerBackendIpcHandlers } = require('./main/ipc/backend')
 const { registerSettingsIpcHandlers } = require('./main/ipc/settings')
 const { registerExportIpcHandlers } = require('./main/ipc/export')
+const { registerQaIpcHandlers } = require('./main/ipc/qa')
 const { registerAnnouncementsIpcHandlers } = require('./main/ipc/announcements')
 const { registerMcpRelayIpcHandlers } = require('./main/ipc/mcpRelay')
 const { createMcpRelayService } = require('./main/mcpRelay')
@@ -33,6 +34,9 @@ const { createDiscordRelay } = require('./main/discord/relay')
 const { registerDiscordIpcHandlers } = require('./main/ipc/discord')
 
 const IS_DEV = process.env.NODE_ENV === 'development'
+// QA/dev tooling (e.g. the save-data export button) is available in dev, or when
+// explicitly enabled in a packaged build for a QA session. Off for normal users.
+const QA_TOOLS_ENABLED = IS_DEV || process.env.STELLARIS_QA_TOOLS === '1'
 const IS_E2E = process.env.E2E === '1'
 
 function parsePositiveIntEnv(name, fallback) {
@@ -1464,6 +1468,16 @@ registerExportIpcHandlers({
   dialog,
   getMainWindow: () => mainWindow,
   app,
+})
+
+registerQaIpcHandlers({
+  ipcMain,
+  validateSender,
+  dialog,
+  shell,
+  getMainWindow: () => mainWindow,
+  callBackendApiEnvelope,
+  isEnabled: () => QA_TOOLS_ENABLED,
 })
 
 const mcpRelayService = createMcpRelayService({

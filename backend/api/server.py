@@ -164,6 +164,13 @@ async def verify_token(
     return credentials.credentials
 
 
+class QAExportRequest(BaseModel):
+    """Request body for /api/qa/export (dev/QA tooling)."""
+
+    output_path: str
+    include_raw: bool = False
+
+
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application.
 
@@ -982,5 +989,46 @@ def create_app() -> FastAPI:
                 status_code=500,
                 detail={"error": f"Chapter regeneration failed: {str(e)}"},
             )
+
+    @app.post("/api/qa/export", dependencies=[Depends(verify_token)])
+    def qa_export(request: Request, body: QAExportRequest) -> dict[str, Any]:
+        """Write a full QA export of the currently-loaded save to a local path.
+
+        Dev/QA tooling — the Electron button that reaches this is gated behind
+        STELLARIS_QA_TOOLS / dev mode. Reuses the same run_full_export as the CLI.
+        """
+        companion = getattr(request.app.state, "companion", None)
+        if companion is None or not getattr(companion, "is_loaded", False):
+            raise HTTPException(
+                status_code=503,
+                detail={"error": "No save loaded", "code": "COMPANION_NOT_INITIALIZED"},
+            )
+        save_path = getattr(companion, "save_path", None)
+        if not save_path:
+            raise HTTPException(status_code=400, detail={"error": "No current save path"})
+
+        import datetime
+        import json as _json
+
+        from stellaris_save_extractor.qa_export import run_full_export
+
+        try:
+            export = run_full_export(
+                str(save_path),
+                include_raw=body.include_raw,
+                exported_at=datetime.datetime.now().isoformat(timespec="seconds"),
+            )
+            Path(body.output_path).write_text(
+                _json.dumps(export, indent=2, sort_keys=True), encoding="utf-8"
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail={"error": f"QA export failed: {str(e)}"})
+
+        smell = export.get("audit", {}).get("smell", [])
+        return {
+            "path": body.output_path,
+            "sections": len(export.get("extraction", {})),
+            "smell_flags": len(smell),
+        }
 
     return app

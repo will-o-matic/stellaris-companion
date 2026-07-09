@@ -280,7 +280,12 @@
     "saveData": {
       "directoryLabel": "DIRECTORY PATH",
       "placeholder": "AUTO-DETECT",
-      "target": "TARGET: STELLARIS SAVE GAME DIRECTORY (LOCAL)"
+      "target": "TARGET: STELLARIS SAVE GAME DIRECTORY (LOCAL)",
+      "qaExportButton": "EXPORT SAVE DATA (QA)",
+      "qaExportBusy": "EXPORTING…",
+      "qaExportHelp": "DEV/QA: DUMP FULL STRUCTURED EXTRACTION + HEALTH AUDIT FOR THE CURRENT SAVE",
+      "qaExportSuccess": "QA export written: {{sections}} sections, {{flags}} smell flag(s)",
+      "qaExportError": "QA export failed"
     },
     "discord": {
       "loading": "ESTABLISHING HANDSHAKE...",
